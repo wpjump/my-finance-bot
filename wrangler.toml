@@ -1,8 +1,0 @@
-name = "my-finance-bot"
-main = "functions/api/webhook.js"
-compatibility_date = "2024-05-11"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "finance_db"
-database_id = "3f1d490e-982d-46f3-9e81-14d3ad3c9eb5"
