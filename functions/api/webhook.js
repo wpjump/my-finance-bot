@@ -1,5 +1,3 @@
-// functions/api/webhook.js
-
 export async function onRequestPost({ request, env }) {
   try {
     const update = await request.json();
@@ -54,9 +52,9 @@ export async function onRequestPost({ request, env }) {
         await env.DB.prepare("DELETE FROM bot_sessions WHERE chat_id = ?").bind(chatId).run();
         
         const typeLabel = type === 'income' ? 'Uang Masuk 📈' : 'Pengeluaran 📉';
-        await sendMessage(chatId, `✅ Siap bos! Udah aku catet sebagai ${typeLabel}:\nRp ${data.amount.toLocaleString('id-ID')} (${data.category})\nKet: ${data.description}\n📅 Waktu: ${dateToInsert}`, token);
+        await sendMessage(chatId, `✅ Siap ${ownerName}! Udah aku catet sebagai ${typeLabel}:\nRp ${data.amount.toLocaleString('id-ID')} (${data.category})\nKet: ${data.description}\n📅 Waktu: ${dateToInsert}`, token);
       } else {
-         await sendMessage(chatId, "Hmm, data transaksi ini kayaknya udah kadaluarsa atau ilang nih bos. Ulangi lagi ya.", token);
+         await sendMessage(chatId, `Hmm, data transaksi ini kayaknya udah kadaluarsa atau ilang nih ${ownerName}. Ulangi lagi ya.`, token);
       }
       return new Response("OK", { status: 200 });
     }
@@ -69,7 +67,7 @@ export async function onRequestPost({ request, env }) {
       const text = update.message.text || update.message.caption || "";
 
       if (text.startsWith("/start")) {
-        const welcomeMessage = `Halo bos! 🙌 Aku udah aktif dan siap bantu ngurusin keuanganmu.\n\nCaranya gampang banget:\n✍️ **Ketik manual:** "Tadi abis beli bakso 25rb" atau "Dapet gajian bulan ini 5 juta".\n📸 **Kirim foto:** Kirim foto struk/bukti transfer. Bisa dikasih caption juga, misal "Beli kopi kemarin sore".\n🧠 **Tanya-tanya:** "Berapa kurs dollar hari ini?" atau "Gimana cara mulai nabung reksadana?"\n\nCek laporan lengkap dan grafikmu di sini:\n👉 /report\n\nYuk, cobain catet pengeluaran pertamamu bos!`;
+        const welcomeMessage = `Halo ${ownerName}! 🙌 Aku udah aktif dan siap bantu ngurusin keuanganmu.\n\nCaranya gampang banget:\n✍️ **Ketik manual:** "Tadi abis beli bakso 25rb" atau "Dapet gajian bulan ini 5 juta".\n📸 **Kirim foto:** Kirim foto struk/bukti transfer. Bisa dikasih caption juga, misal "Beli kopi kemarin sore".\n🧠 **Tanya-tanya:** "Berapa kurs dollar hari ini?" atau "Gimana cara mulai nabung reksadana?"\n\nCek laporan lengkap dan grafikmu di sini:\n👉 /report\n\nYuk, cobain catet pengeluaran pertamamu ${ownerName}!`;
         await sendMessage(chatId, welcomeMessage, token);
         return new Response("OK", { status: 200 });
       } 
@@ -77,12 +75,12 @@ export async function onRequestPost({ request, env }) {
       if (text.startsWith("/report")) {
          const url = new URL(request.url);
          const dashboardUrl = `${url.protocol}//${url.hostname}`;
-         await sendMessage(chatId, `📊 Ini link laporan keuangan khusus buatmu bos:\n${dashboardUrl}/?chat_id=${chatId}`, token);
+         await sendMessage(chatId, `📊 Ini link laporan keuangannya ${ownerName}:\n${dashboardUrl}/?chat_id=${chatId}`, token);
          return new Response("OK", { status: 200 });
       }
 
       if (text || update.message.photo) {
-         await sendMessage(chatId, "⏳ Bentar bos, lagi aku cek...", token);
+         await sendMessage(chatId, `⏳ Bentar ${ownerName}, lagi aku cek...`, token);
          let base64Image = null;
 
          if (update.message.photo) {
@@ -96,7 +94,7 @@ export async function onRequestPost({ request, env }) {
              base64Image = arrayBufferToBase64(imgBuffer);
          }
 
-         const aiResult = await askGeminiAgent(text, base64Image, env.GEMINI_API_KEY);
+         const aiResult = await askGeminiAgent(text, base64Image, env.GEMINI_API_KEY, ownerName);
 
          if (aiResult.type === "chat") {
              await sendMessage(chatId, aiResult.reply, token);
@@ -181,14 +179,14 @@ async function sendInlineKeyboard(chatId, text, token) {
 }
 
 // Gemini Agent Logic
-async function askGeminiAgent(textInput, imageBase64, apiKey) {
+async function askGeminiAgent(textInput, imageBase64, apiKey, ownerName) {
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     
     // Inject waktu saat ini agar Gemini tahu konteks "Kemarin" atau "Hari ini"
     const currentDate = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' });
 
-    const prompt = `Kamu adalah asisten keuangan pribadi yang santai, asik, friendly, dan pinter bernama "MyFinance AI".
+    const prompt = `Kamu adalah asisten keuangan pribadi yang santai, asik, friendly, dan pinter bernama "MyFinance AI". Kamu harus memanggil saya sebagai "${ownerName}".
     Saat ini di Indonesia adalah: ${currentDate}.
     Tugasmu MENGANALISIS input user (teks/caption atau gambar) dan membalas HANYA dengan format JSON yang valid tanpa markdown.
     
@@ -203,7 +201,7 @@ async function askGeminiAgent(textInput, imageBase64, apiKey) {
        Buat JSON: {"type": "chat", "reply": "jawaban asik, edukatif, dan ramah menggunakan bahasa sehari-hari (pakai sebutan aku/kamu atau bos)"}
     
     3. JIKA input DI LUAR topik keuangan (misal minta code, resep, dll):
-       Buat JSON: {"type": "chat", "reply": "Waduh bos, aku cuma asisten keuangan nih. Kalo urusan di luar duit aku kurang paham, hehe. Ada transaksi yang mau dicatat?"}
+       Buat JSON: {"type": "chat", "reply": "Waduh ${ownerName}, aku cuma asisten keuangan nih. Kalo urusan di luar duit aku kurang paham, hehe. Ada transaksi yang mau dicatat?"}
 
     INPUT USER: "${textInput || "Tolong analisis gambar struk ini."}"`;
 
@@ -224,7 +222,7 @@ async function askGeminiAgent(textInput, imageBase64, apiKey) {
     const data = await response.json();
     
     if (!data.candidates || data.candidates.length === 0) {
-       return { type: "chat", reply: "Waduh, AI-nya lagi pusing nih bos. Coba kirim gambarnya yang lebih jelas atau ketik manual aja ya." };
+       return { type: "chat", reply: `Waduh, AI-nya lagi pusing nih ${ownerName}. Coba kirim gambarnya yang lebih jelas atau ketik manual aja ya.` };
     }
 
     const textResponse = data.candidates[0].content.parts[0].text;
@@ -233,6 +231,6 @@ async function askGeminiAgent(textInput, imageBase64, apiKey) {
     return JSON.parse(cleanJson);
   } catch (e) {
     console.error("Gemini Agent Error:", e);
-    return { type: "chat", reply: "Oops, ada error internal pas baca datamu bos. Coba lagi bentar ya." };
+    return { type: "chat", reply: `Oops, ada error internal pas baca datamu ${ownerName}. Coba lagi bentar ya.` };
   }
 }
