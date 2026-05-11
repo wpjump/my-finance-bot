@@ -4,11 +4,33 @@ export async function onRequestPost({ request, env }) {
   try {
     const update = await request.json();
     const token = env.TELEGRAM_TOKEN;
+    const ownerId = String(env.OWNER_CHAT_ID); // Get the owner's ID from Cloudflare settings
 
+    // --- SECURITY CHECK: GET CURRENT CHAT ID ---
+    let currentChatId = null;
+    if (update.message) {
+      currentChatId = String(update.message.chat.id);
+    } else if (update.callback_query) {
+      currentChatId = String(update.callback_query.message.chat.id);
+    }
+
+    // --- AUTHORIZATION GATE ---
+    // If we have a chat ID, but it doesn't match the owner, reject it!
+    if (currentChatId && currentChatId !== ownerId) {
+       console.warn(`Unauthorized access attempt from Chat ID: ${currentChatId}`);
+       // Optional: Send a rejection message to the intruder
+       await sendMessage(currentChatId, "⛔ Maaf, bot ini adalah asisten pribadi dan dikunci hanya untuk pemiliknya.", token);
+       
+       // Return 200 OK so Telegram doesn't retry the message
+       return new Response("Unauthorized", { status: 200 }); 
+    }
+
+    // ==========================================
     // 1. Handle Callback Queries (From Inline Keyboard Buttons)
+    // ==========================================
     if (update.callback_query) {
       const chatId = update.callback_query.message.chat.id;
-      const type = update.callback_query.data; // 'income' or 'expense'
+      const type = update.callback_query.data; 
 
       const session = await env.DB.prepare(
         "SELECT temp_data FROM bot_sessions WHERE chat_id = ?"
@@ -31,14 +53,15 @@ export async function onRequestPost({ request, env }) {
       return new Response("OK", { status: 200 });
     }
 
+    // ==========================================
     // 2. Handle Messages (Text, Photos, or Text + Photos)
+    // ==========================================
     if (update.message) {
       const chatId = update.message.chat.id;
       const text = update.message.text || update.message.caption || "";
 
-      // Handle Slash Commands First
       if (text.startsWith("/start")) {
-        const welcomeMessage = `Halo! Saya AI Asisten Keuangan Pribadimu. 💸\n\nApa yang bisa saya lakukan?\n1. Catat via Teks: "Catat pengeluaran 45rb buat beli kopi"\n2. Catat via Gambar: Kirim foto struk/bukti transfer.\n3. Tanya Keuangan: "Berapa kurs dollar hari ini?" atau "Gimana cara nabung buat KPR?"\n\n👉 /report - Lihat grafik laporan keuanganmu.`;
+        const welcomeMessage = `Halo Boss! Saya AI Asisten Keuangan Pribadimu. 💸\n\nApa yang bisa saya lakukan?\n1. Catat via Teks: "Catat pengeluaran 45rb buat beli kopi"\n2. Catat via Gambar: Kirim foto struk/bukti transfer.\n3. Tanya Keuangan: "Berapa kurs dollar hari ini?" atau "Gimana cara nabung buat KPR?"\n\n👉 /report - Lihat grafik laporan keuanganmu.`;
         await sendMessage(chatId, welcomeMessage, token);
         return new Response("OK", { status: 200 });
       } 
@@ -50,13 +73,10 @@ export async function onRequestPost({ request, env }) {
          return new Response("OK", { status: 200 });
       }
 
-      // Handle AI Processing (General Text or Image)
       if (text || update.message.photo) {
          await sendMessage(chatId, "⏳ Memproses...", token);
-
          let base64Image = null;
 
-         // If there's an image, fetch and convert it
          if (update.message.photo) {
              const fileId = update.message.photo[update.message.photo.length - 1].file_id;
              const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
@@ -68,18 +88,13 @@ export async function onRequestPost({ request, env }) {
              base64Image = arrayBufferToBase64(imgBuffer);
          }
 
-         // Send to Gemini AI Agent
          const aiResult = await askGeminiAgent(text, base64Image, env.GEMINI_API_KEY);
 
-         // Handle AI Response Routing
          if (aiResult.type === "chat") {
-             // It's a general question or a rejected out-of-bounds request
              await sendMessage(chatId, aiResult.reply, token);
          } 
          else if (aiResult.type === "transaction") {
-             // It's a transaction. Does the AI know if it's income or expense?
              if (aiResult.transaction_type === "expense" || aiResult.transaction_type === "income") {
-                 // Perfect data from text (e.g., "Catat pengeluaran 45000"), save directly!
                  await env.DB.prepare(
                     "INSERT INTO transactions (chat_id, amount, transaction_type, category, description) VALUES (?, ?, ?, ?, ?)"
                  ).bind(chatId, aiResult.amount, aiResult.transaction_type, aiResult.category, aiResult.description).run();
@@ -88,7 +103,6 @@ export async function onRequestPost({ request, env }) {
                  await sendMessage(chatId, `✅ Berhasil dicatat otomatis sebagai ${typeLabel}:\nRp ${aiResult.amount.toLocaleString('id-ID')} (${aiResult.category})\nKet: ${aiResult.description}`, token);
              } 
              else {
-                 // Incomplete data (e.g., just an image receipt), ask user for confirmation
                  await env.DB.prepare(
                     "INSERT OR REPLACE INTO bot_sessions (chat_id, temp_data, current_state) VALUES (?, ?, ?)"
                  ).bind(chatId, JSON.stringify(aiResult), "waiting_type").run();
@@ -109,10 +123,6 @@ export async function onRequestPost({ request, env }) {
     return new Response("OK", { status: 200 });
   }
 }
-
-// ==========================================
-// HELPER FUNCTIONS
-// ==========================================
 
 function arrayBufferToBase64(buffer) {
   let binary = '';
