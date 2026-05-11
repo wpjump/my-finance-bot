@@ -15,11 +15,10 @@ export async function onRequestPost({ request, env }) {
     }
 
     // --- AUTHORIZATION GATE ---
-    // If we have a chat ID, but it doesn't match the owner, reject it!
     if (currentChatId && currentChatId !== ownerId) {
        console.warn(`Unauthorized access attempt from Chat ID: ${currentChatId}`);
        // Optional: Send a rejection message to the intruder
-       await sendMessage(currentChatId, "⛔ Maaf, bot ini adalah asisten pribadi dan dikunci hanya untuk pemiliknya.", token);
+       await sendMessage(currentChatId, "⛔ Maaf, "+ownerId+" bot ini adalah asisten pribadi dan dikunci hanya untuk pemiliknya.", token);
        
        // Return 200 OK so Telegram doesn't retry the message
        return new Response("Unauthorized", { status: 200 }); 
