@@ -8,9 +8,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans antialiased">
+<body class="bg-slate-50 text-slate-900 font-sans antialiased flex flex-col min-h-screen">
     
-    <div class="max-w-5xl mx-auto px-4 py-6 md:py-10">
+    <div class="max-w-5xl mx-auto px-4 py-6 md:py-10 flex-grow w-full">
         <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
             <div>
                 <h1 class="text-3xl font-extrabold text-indigo-700 tracking-tight">Laporan Keuangan</h1>
@@ -42,9 +42,9 @@
                     <label class="block text-xs font-bold uppercase text-slate-400 mb-2">Pilih Tahun</label>
                     <select id="yearFilter" onchange="filterData()" class="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:ring-2 focus:ring-indigo-500 outline-none">
                         <option value="2024">2024</option>
-                        <option value="2025" selected>2025</option>
+                        <option value="2025">2025</option>
                         <option value="2026">2026</option>
-                    </select>
+                        </select>
                 </div>
             </div>
         </section>
@@ -79,7 +79,7 @@
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-10">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
@@ -94,6 +94,10 @@
                 </table>
             </div>
         </div>
+
+        <footer class="mt-20 mb-8 text-center text-sm text-slate-400">
+            Dibuat oleh <a href="https://play.google.com/store/apps/dev?id=6888173354290501082" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 hover:underline font-semibold transition">Mas Wid</a>
+        </footer>
     </div>
 
     <script>
@@ -108,6 +112,22 @@
                 return;
             }
             document.getElementById('displayId').innerText = `Chat ID: ${chatId}`;
+
+            // Set Filter ke Bulan dan Tahun Saat Ini
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+
+            document.getElementById('monthFilter').value = currentMonth;
+
+            // Cek apakah tahun saat ini ada di select option, kalau tidak, tambahkan otomatis
+            const yearSelect = document.getElementById('yearFilter');
+            let yearExists = Array.from(yearSelect.options).some(opt => parseInt(opt.value) === currentYear);
+            if (!yearExists) {
+                const newOption = new Option(currentYear, currentYear);
+                yearSelect.add(newOption);
+            }
+            yearSelect.value = currentYear;
             
             try {
                 // Endpoint API harus sudah dibuat di functions/api/data.js
