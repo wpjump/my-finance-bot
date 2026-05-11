@@ -45,13 +45,15 @@ export async function onRequestPost({ request, env }) {
         const text = update.message.text;
         
         if (text.startsWith("/start")) {
-          await sendMessage(chatId, "Halo! Kirimkan foto/screenshot struk transaksimu, dan aku akan mencatatnya otomatis.", token);
+          const welcomeMessage = `Halo! Selamat datang di Bot Pencatat Keuangan Pintar. 💸\n\nCara menggunakannya sangat mudah:\n1. Kirimkan foto struk belanja, screenshot bukti transfer, atau tagihan.\n2. AI akan membaca nominal dan kategorinya secara otomatis.\n3. Konfirmasi apakah itu Pemasukan atau Pengeluaran.\n\nPerintah lain:\n👉 /report - Untuk melihat dashboard grafik dan export excel.\n\nYuk, coba kirimkan satu foto transaksimu sekarang!`;
+          
+          await sendMessage(chatId, welcomeMessage, token);
         } else if (text.startsWith("/report")) {
            // Generate dashboard URL dynamically
            const dashboardUrl = new URL(request.url).origin;
            await sendMessage(chatId, `📊 Cek laporan keuanganmu di sini:\n${dashboardUrl}/?chat_id=${chatId}`, token);
         } else {
-          await sendMessage(chatId, "Kirimkan gambar struk transaksi untuk mulai mencatat.", token);
+          await sendMessage(chatId, "Kirimkan gambar/screenshot transaksi untuk mulai mencatat, atau ketik /report untuk melihat laporan.", token);
         }
       }
 
