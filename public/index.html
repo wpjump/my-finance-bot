@@ -1,49 +1,205 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personal Finance Report - Dashboard</title>
+    <title>Dashboard Keuangan - MyFinance AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
-<body class="bg-gray-50 text-gray-800">
-    <div class="max-w-4-xl mx-auto p-6">
-        <header class="flex justify-between items-center mb-8">
-            <h1 class="text-2xl font-bold text-blue-600">MyFinance Report</h1>
-            <div class="space-x-2">
-                <button onclick="exportToExcel()" class="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">Export Excel</button>
-                <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">Print PDF</button>
+<body class="bg-slate-50 text-slate-900 font-sans antialiased">
+    
+    <div class="max-w-5xl mx-auto px-4 py-6 md:py-10">
+        <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+            <div>
+                <h1 class="text-3xl font-extrabold text-indigo-700 tracking-tight">Laporan Keuangan</h1>
+                <p class="text-slate-500 text-sm mt-1" id="displayId">Memuat data asisten...</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="exportToExcel()" class="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-5 rounded-xl transition shadow-sm active:scale-95">
+                    Excel
+                </button>
+                <button onclick="window.print()" class="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-5 rounded-xl transition shadow-sm active:scale-95">
+                    Cetak PDF
+                </button>
             </div>
         </header>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div class="bg-white p-6 rounded-lg shadow">
-                <h3 class="text-gray-500 mb-2">Total Transaksi</h3>
-                <canvas id="chartType"></canvas>
+        <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-8">
+            <div class="flex flex-wrap items-end gap-4">
+                <div class="flex-1 min-w-[140px]">
+                    <label class="block text-xs font-bold uppercase text-slate-400 mb-2">Pilih Bulan</label>
+                    <select id="monthFilter" onchange="filterData()" class="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="all">Semua Bulan</option>
+                        <option value="0">Januari</option><option value="1">Februari</option><option value="2">Maret</option>
+                        <option value="3">April</option><option value="4">Mei</option><option value="5">Juni</option>
+                        <option value="6">Juli</option><option value="7">Agustus</option><option value="8">September</option>
+                        <option value="9">Oktober</option><option value="10">November</option><option value="11">Desember</option>
+                    </select>
+                </div>
+                <div class="flex-1 min-w-[140px]">
+                    <label class="block text-xs font-bold uppercase text-slate-400 mb-2">Pilih Tahun</label>
+                    <select id="yearFilter" onchange="filterData()" class="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="2024">2024</option>
+                        <option value="2025" selected>2025</option>
+                        <option value="2026">2026</option>
+                    </select>
+                </div>
             </div>
-            <div class="bg-white p-6 rounded-lg shadow">
-                <h3 class="text-gray-500 mb-2">Distribusi Kategori</h3>
-                <canvas id="chartCategory"></canvas>
+        </section>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                <p class="text-xs font-bold text-emerald-500 uppercase">Pemasukan</p>
+                <h2 class="text-2xl font-bold mt-1" id="totalIncome">Rp 0</h2>
+            </div>
+            <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                <p class="text-xs font-bold text-rose-500 uppercase">Pengeluaran</p>
+                <h2 class="text-2xl font-bold mt-1" id="totalExpense">Rp 0</h2>
+            </div>
+            <div class="bg-white p-6 rounded-2xl border border-indigo-100 shadow-sm bg-indigo-50/30">
+                <p class="text-xs font-bold text-indigo-600 uppercase">Saldo Bersih</p>
+                <h2 class="text-2xl font-bold mt-1" id="netBalance">Rp 0</h2>
             </div>
         </div>
 
-        <div class="bg-white rounded-lg shadow overflow-hidden">
-            <table class="min-w-full leading-normal">
-                <thead>
-                    <tr class="bg-gray-100 border-b">
-                        <th class="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tanggal</th>
-                        <th class="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Kategori</th>
-                        <th class="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tipe</th>
-                        <th class="px-5 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Nominal</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    </tbody>
-            </table>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-[350px]">
+                <h3 class="text-sm font-bold text-slate-400 uppercase mb-4">Proporsi Transaksi</h3>
+                <div class="relative h-64">
+                    <canvas id="chartType"></canvas>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-[350px]">
+                <h3 class="text-sm font-bold text-slate-400 uppercase mb-4">Top Kategori</h3>
+                <div class="relative h-64">
+                    <canvas id="chartCategory"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/80 border-b border-slate-100">
+                            <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase">Waktu</th>
+                            <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase">Kategori</th>
+                            <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase text-right">Nominal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-50">
+                        </tbody>
+                </table>
+            </div>
         </div>
     </div>
-    <script src="js/app.js"></script>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const chatId = urlParams.get('chat_id');
+        let allData = [];
+        let chart1, chart2;
+
+        async function init() {
+            if (!chatId) {
+                document.body.innerHTML = `<div class="h-screen flex items-center justify-center p-6 text-center"><div class="max-w-xs"><h1 class="text-2xl font-bold text-slate-800 mb-2">Akses Ditolak</h1><p class="text-slate-500">Silakan buka link ini melalui bot Telegram Anda.</p></div></div>`;
+                return;
+            }
+            document.getElementById('displayId').innerText = `Chat ID: ${chatId}`;
+            
+            try {
+                // Endpoint API harus sudah dibuat di functions/api/data.js
+                const res = await fetch(`/api/data?chat_id=${chatId}`);
+                allData = await res.json();
+                filterData();
+            } catch (err) {
+                console.error("Gagal memuat data:", err);
+            }
+        }
+
+        function filterData() {
+            const m = document.getElementById('monthFilter').value;
+            const y = document.getElementById('yearFilter').value;
+
+            const filtered = allData.filter(t => {
+                const d = new Date(t.created_at);
+                const matchMonth = m === 'all' || d.getMonth() == m;
+                const matchYear = d.getFullYear() == y;
+                return matchMonth && matchYear;
+            });
+
+            updateUI(filtered);
+        }
+
+        function updateUI(data) {
+            let inc = 0, exp = 0;
+            const cats = {};
+            
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            data.forEach(t => {
+                if (t.transaction_type === 'income') inc += t.amount;
+                else exp += t.amount;
+
+                cats[t.category] = (cats[t.category] || 0) + t.amount;
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="px-6 py-4 text-sm text-slate-500">${new Date(t.created_at).toLocaleDateString('id-ID')}</td>
+                        <td class="px-6 py-4">
+                            <span class="text-sm font-semibold capitalize">${t.category}</span>
+                            <p class="text-[10px] text-slate-400 truncate max-w-[100px]">${t.description || '-'}</p>
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <span class="text-sm font-bold ${t.transaction_type === 'income' ? 'text-emerald-600' : 'text-rose-600'}">
+                                ${t.transaction_type === 'income' ? '+' : '-'} Rp ${t.amount.toLocaleString('id-ID')}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById('totalIncome').innerText = `Rp ${inc.toLocaleString('id-ID')}`;
+            document.getElementById('totalExpense').innerText = `Rp ${exp.toLocaleString('id-ID')}`;
+            document.getElementById('netBalance').innerText = `Rp ${(inc - exp).toLocaleString('id-ID')}`;
+
+            renderCharts(inc, exp, cats);
+        }
+
+        function renderCharts(inc, exp, cats) {
+            if (chart1) chart1.destroy();
+            if (chart2) chart2.destroy();
+
+            chart1 = new Chart(document.getElementById('chartType'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Masuk', 'Keluar'],
+                    datasets: [{ data: [inc, exp], backgroundColor: ['#10b981', '#f43f5e'], borderWidth: 0 }]
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+            });
+
+            chart2 = new Chart(document.getElementById('chartCategory'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(cats),
+                    datasets: [{ label: 'Nominal', data: Object.values(cats), backgroundColor: '#6366f1', borderRadius: 8 }]
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+        }
+
+        function exportToExcel() {
+            const ws = XLSX.utils.json_to_sheet(allData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Transaksi");
+            XLSX.writeFile(wb, `Laporan_${chatId}.xlsx`);
+        }
+
+        init();
+    </script>
 </body>
 </html>
