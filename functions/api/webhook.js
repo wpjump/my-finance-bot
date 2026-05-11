@@ -4,7 +4,7 @@ export async function onRequestPost({ request, env }) {
   try {
     const update = await request.json();
     const token = env.TELEGRAM_TOKEN;
-    const ownerId = String(env.OWNER_CHAT_ID); // Get the owner's ID from Cloudflare settings
+    const ownerId = env.OWNER_CHAT_ID ? String(env.OWNER_CHAT_ID) : null; 
 
     // --- SECURITY CHECK: GET CURRENT CHAT ID ---
     let currentChatId = null;
@@ -14,18 +14,24 @@ export async function onRequestPost({ request, env }) {
       currentChatId = String(update.callback_query.message.chat.id);
     }
 
-    // --- AUTHORIZATION GATE ---
+    // --- SETUP & AUTHORIZATION GATE ---
+    // 1. Jika OWNER_CHAT_ID belum disetting di Cloudflare
+    if (!ownerId) {
+      const setupMsg = `Halo! 👋 Aku belum punya 'majikan' nih.\n\nBiar aman dan data keuanganmu nggak bisa diintip orang lain, kamu harus ngunci bot ini khusus buat kamu doang.\n\n🔑 **Chat ID kamu:** \`${currentChatId}\`\n\n**Cara setting-nya gampang:**\n1. Copy angka Chat ID di atas.\n2. Buka dashboard Cloudflare > masuk ke project kamu.\n3. Pilih menu Settings > Environment variables.\n4. Tambah variable baru dengan nama \`OWNER_CHAT_ID\` dan isinya paste angka tadi.\n5. Save & Deploy ulang (Retry deployment).\n\nKalo udah selesai, ketik /start lagi ya bos!`;
+      
+      await sendMessage(currentChatId, setupMsg, token);
+      return new Response("OK", { status: 200 }); 
+    }
+    
+    // 2. Jika yang chat BUKAN pemilik bot
     if (currentChatId && currentChatId !== ownerId) {
        console.warn(`Unauthorized access attempt from Chat ID: ${currentChatId}`);
-       // Optional: Send a rejection message to the intruder
-       await sendMessage(currentChatId, "⛔ Maaf, "+ownerId+" bot ini adalah asisten pribadi dan dikunci hanya untuk pemiliknya.", token);
-       
-       // Return 200 OK so Telegram doesn't retry the message
-       return new Response("Unauthorized", { status: 200 }); 
+       await sendMessage(currentChatId, "Waduh, maaf ya! ⛔ Aku ini asisten pribadi majikanku. Kamu gak punya akses buat nyuruh-nyuruh aku, hehe.", token);
+       return new Response("OK", { status: 200 }); 
     }
 
     // ==========================================
-    // 1. Handle Callback Queries (From Inline Keyboard Buttons)
+    // 1. Handle Callback Queries (Tombol Pemasukan/Pengeluaran)
     // ==========================================
     if (update.callback_query) {
       const chatId = update.callback_query.message.chat.id;
@@ -37,30 +43,31 @@ export async function onRequestPost({ request, env }) {
 
       if (session) {
         const data = JSON.parse(session.temp_data);
+        const dateToInsert = data.date || getFallbackDate();
         
         await env.DB.prepare(
-          "INSERT INTO transactions (chat_id, amount, transaction_type, category, description) VALUES (?, ?, ?, ?, ?)"
-        ).bind(chatId, data.amount, type, data.category, data.description).run();
+          "INSERT INTO transactions (chat_id, amount, transaction_type, category, description, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+        ).bind(chatId, data.amount, type, data.category, data.description, dateToInsert).run();
 
         await env.DB.prepare("DELETE FROM bot_sessions WHERE chat_id = ?").bind(chatId).run();
         
-        const typeLabel = type === 'income' ? 'Pemasukan 📈' : 'Pengeluaran 📉';
-        await sendMessage(chatId, `✅ Berhasil dicatat sebagai ${typeLabel}:\nRp ${data.amount.toLocaleString('id-ID')} (${data.category})\nKet: ${data.description}`, token);
+        const typeLabel = type === 'income' ? 'Uang Masuk 📈' : 'Pengeluaran 📉';
+        await sendMessage(chatId, `✅ Siap bos! Udah aku catet sebagai ${typeLabel}:\nRp ${data.amount.toLocaleString('id-ID')} (${data.category})\nKet: ${data.description}\n📅 Waktu: ${dateToInsert}`, token);
       } else {
-         await sendMessage(chatId, "⚠️ Sesi sudah kadaluarsa atau data tidak ditemukan.", token);
+         await sendMessage(chatId, "Hmm, data transaksi ini kayaknya udah kadaluarsa atau ilang nih bos. Ulangi lagi ya.", token);
       }
       return new Response("OK", { status: 200 });
     }
 
     // ==========================================
-    // 2. Handle Messages (Text, Photos, or Text + Photos)
+    // 2. Handle Messages (Teks, Foto, atau Teks + Foto)
     // ==========================================
     if (update.message) {
       const chatId = update.message.chat.id;
       const text = update.message.text || update.message.caption || "";
 
       if (text.startsWith("/start")) {
-        const welcomeMessage = `Halo Boss! Saya AI Asisten Keuangan Pribadimu. 💸\n\nApa yang bisa saya lakukan?\n1. Catat via Teks: "Catat pengeluaran 45rb buat beli kopi"\n2. Catat via Gambar: Kirim foto struk/bukti transfer.\n3. Tanya Keuangan: "Berapa kurs dollar hari ini?" atau "Gimana cara nabung buat KPR?"\n\n👉 /report - Lihat grafik laporan keuanganmu.`;
+        const welcomeMessage = `Halo bos! 🙌 Aku udah aktif dan siap bantu ngurusin keuanganmu.\n\nCaranya gampang banget:\n✍️ **Ketik manual:** "Tadi abis beli bakso 25rb" atau "Dapet gajian bulan ini 5 juta".\n📸 **Kirim foto:** Kirim foto struk/bukti transfer. Bisa dikasih caption juga, misal "Beli kopi kemarin sore".\n🧠 **Tanya-tanya:** "Berapa kurs dollar hari ini?" atau "Gimana cara mulai nabung reksadana?"\n\nCek laporan lengkap dan grafikmu di sini:\n👉 /report\n\nYuk, cobain catet pengeluaran pertamamu bos!`;
         await sendMessage(chatId, welcomeMessage, token);
         return new Response("OK", { status: 200 });
       } 
@@ -68,12 +75,12 @@ export async function onRequestPost({ request, env }) {
       if (text.startsWith("/report")) {
          const url = new URL(request.url);
          const dashboardUrl = `${url.protocol}//${url.hostname}`;
-         await sendMessage(chatId, `📊 Cek laporan keuanganmu di sini:\n${dashboardUrl}/?chat_id=${chatId}`, token);
+         await sendMessage(chatId, `📊 Ini link laporan keuangan khusus buatmu bos:\n${dashboardUrl}/?chat_id=${chatId}`, token);
          return new Response("OK", { status: 200 });
       }
 
       if (text || update.message.photo) {
-         await sendMessage(chatId, "⏳ Memproses...", token);
+         await sendMessage(chatId, "⏳ Bentar bos, lagi aku cek...", token);
          let base64Image = null;
 
          if (update.message.photo) {
@@ -93,22 +100,26 @@ export async function onRequestPost({ request, env }) {
              await sendMessage(chatId, aiResult.reply, token);
          } 
          else if (aiResult.type === "transaction") {
-             if (aiResult.transaction_type === "expense" || aiResult.transaction_type === "income") {
-                 await env.DB.prepare(
-                    "INSERT INTO transactions (chat_id, amount, transaction_type, category, description) VALUES (?, ?, ?, ?, ?)"
-                 ).bind(chatId, aiResult.amount, aiResult.transaction_type, aiResult.category, aiResult.description).run();
+             const dateToInsert = aiResult.date || getFallbackDate();
 
-                 const typeLabel = aiResult.transaction_type === 'income' ? 'Pemasukan 📈' : 'Pengeluaran 📉';
-                 await sendMessage(chatId, `✅ Berhasil dicatat otomatis sebagai ${typeLabel}:\nRp ${aiResult.amount.toLocaleString('id-ID')} (${aiResult.category})\nKet: ${aiResult.description}`, token);
+             if (aiResult.transaction_type === "expense" || aiResult.transaction_type === "income") {
+                 // Gemini 100% yakin ini pengeluaran/pemasukan (biasanya karena ada caption/teks)
+                 await env.DB.prepare(
+                    "INSERT INTO transactions (chat_id, amount, transaction_type, category, description, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+                 ).bind(chatId, aiResult.amount, aiResult.transaction_type, aiResult.category, aiResult.description, dateToInsert).run();
+
+                 const typeLabel = aiResult.transaction_type === 'income' ? 'Uang Masuk 📈' : 'Pengeluaran 📉';
+                 await sendMessage(chatId, `✅ Beres bos! Otomatis dicatet sebagai ${typeLabel}:\nRp ${aiResult.amount.toLocaleString('id-ID')} (${aiResult.category})\nKet: ${aiResult.description}\n📅 ${dateToInsert}`, token);
              } 
              else {
+                 // Gambar struk tanpa caption yang jelas, tanyakan ke user
                  await env.DB.prepare(
                     "INSERT OR REPLACE INTO bot_sessions (chat_id, temp_data, current_state) VALUES (?, ?, ?)"
-                 ).bind(chatId, JSON.stringify(aiResult), "waiting_type").run();
+                 ).bind(chatId, JSON.stringify({...aiResult, date: dateToInsert}), "waiting_type").run();
 
                  await sendInlineKeyboard(
                    chatId, 
-                   `Data transaksi terbaca:\n💰 Nominal: Rp ${aiResult.amount.toLocaleString('id-ID')}\n🏷️ Kategori: ${aiResult.category}\n📝 Ket: ${aiResult.description}\n\nIni termasuk jenis apa?`, 
+                   `Ketemu nih transaksinya:\n💰 Nominal: Rp ${aiResult.amount.toLocaleString('id-ID')}\n🏷️ Kategori: ${aiResult.category}\n📝 Ket: ${aiResult.description}\n📅 ${dateToInsert}\n\nKalo boleh tau, ini uang masuk atau keluar bos?`, 
                    token
                  );
              }
@@ -121,6 +132,15 @@ export async function onRequestPost({ request, env }) {
     console.error("Webhook Error:", error);
     return new Response("OK", { status: 200 });
   }
+}
+
+// ==========================================
+// HELPER FUNCTIONS
+// ==========================================
+
+function getFallbackDate() {
+  // Menghasilkan tanggal default dengan format YYYY-MM-DD HH:MM:SS (UTC, nanti disesuaikan via JS di frontend jika perlu)
+  return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
 function arrayBufferToBase64(buffer) {
@@ -150,7 +170,7 @@ async function sendInlineKeyboard(chatId, text, token) {
       text: text,
       reply_markup: {
         inline_keyboard: [[
-          { text: "Pemasukan 📈", callback_data: "income" },
+          { text: "Uang Masuk 📈", callback_data: "income" },
           { text: "Pengeluaran 📉", callback_data: "expense" }
         ]]
       }
@@ -158,27 +178,32 @@ async function sendInlineKeyboard(chatId, text, token) {
   });
 }
 
-// New Gemini Agent Logic
+// Gemini Agent Logic
 async function askGeminiAgent(textInput, imageBase64, apiKey) {
   try {
-    // Upgraded to newer model endpoint
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    
+    // Inject waktu saat ini agar Gemini tahu konteks "Kemarin" atau "Hari ini"
+    const currentDate = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' });
 
-    const prompt = `Kamu adalah asisten keuangan pribadi bernama "MyFinance AI". 
-    Tugasmu MENGANALISIS input user (teks atau gambar) dan membalas HANYA dengan format JSON yang valid. Jangan gunakan markdown.
+    const prompt = `Kamu adalah asisten keuangan pribadi yang santai, asik, friendly, dan pinter bernama "MyFinance AI".
+    Saat ini di Indonesia adalah: ${currentDate}.
+    Tugasmu MENGANALISIS input user (teks/caption atau gambar) dan membalas HANYA dengan format JSON yang valid tanpa markdown.
     
     ATURAN LOGIKA:
-    1. JIKA input berisi perintah mencatat uang/transaksi/struk, buat JSON:
-       {"type": "transaction", "amount": angka_saja, "category": "satu_kata", "transaction_type": "expense/income/unknown", "description": "keterangan singkat"}
-       *Catatan transaction_type: Jika user secara eksplisit bilang pengeluaran/beli/bayar gunakan "expense". Jika gaji/dapat/terima gunakan "income". Jika dari gambar struk tidak ketahuan itu uang masuk atau keluar, gunakan "unknown".
+    1. JIKA input berisi perintah mencatat uang (contoh: "beli bakso kemarin 15rb", "gajian 5 juta", atau gambar struk belanja):
+       Buat JSON:
+       {"type": "transaction", "amount": angka_saja, "category": "satu_kata_kategori", "transaction_type": "expense/income/unknown", "description": "keterangan singkat", "date": "YYYY-MM-DD HH:MM:SS"}
+       *Catatan transaction_type: Jika ada teks yang secara eksplisit berarti pengeluaran/beli/bayar, gunakan "expense". Jika gaji/dapat/terima, gunakan "income". Jika input HANYA berupa gambar struk TANPA caption yang jelas, WAJIB gunakan "unknown".
+       *Catatan date: Pahami konteks waktu user (misal "kemarin", "tadi pagi", "tanggal 5"). Hitung mundur/maju berdasarkan waktu saat ini (${currentDate}). Jika tidak ada keterangan, gunakan format waktu saat ini (YYYY-MM-DD HH:MM:SS).
     
-    2. JIKA input adalah pertanyaan wajar seputar keuangan (kurs, investasi, tips hemat, pajak), buat JSON:
-       {"type": "chat", "reply": "jawaban edukatif dan ramah dari kamu"}
+    2. JIKA input pertanyaan wajar seputar keuangan (kurs, investasi, tips hemat):
+       Buat JSON: {"type": "chat", "reply": "jawaban asik, edukatif, dan ramah menggunakan bahasa sehari-hari (pakai sebutan aku/kamu atau bos)"}
     
-    3. JIKA input DI LUAR topik keuangan (misal: minta buat gambar, resep makanan, coding, lelucon), TOLAK dengan sopan:
-       {"type": "chat", "reply": "Maaf, saya didesain khusus sebagai asisten keuangan. Saya tidak bisa membantu terkait topik tersebut."}
+    3. JIKA input DI LUAR topik keuangan (misal minta code, resep, dll):
+       Buat JSON: {"type": "chat", "reply": "Waduh bos, aku cuma asisten keuangan nih. Kalo urusan di luar duit aku kurang paham, hehe. Ada transaksi yang mau dicatat?"}
 
-    INPUT USER: "${textInput || "Analisis gambar struk ini."}"`;
+    INPUT USER: "${textInput || "Tolong analisis gambar struk ini."}"`;
 
     const parts = [{ text: prompt }];
 
@@ -197,16 +222,15 @@ async function askGeminiAgent(textInput, imageBase64, apiKey) {
     const data = await response.json();
     
     if (!data.candidates || data.candidates.length === 0) {
-       return { type: "chat", reply: "Maaf, sistem AI tidak dapat merespon saat ini. Pastikan gambar jelas atau server sedang tidak sibuk." };
+       return { type: "chat", reply: "Waduh, AI-nya lagi pusing nih bos. Coba kirim gambarnya yang lebih jelas atau ketik manual aja ya." };
     }
 
     const textResponse = data.candidates[0].content.parts[0].text;
     const cleanJson = textResponse.replace(/```json|```/g, "").trim();
     
-    // Safety parse just in case Gemini accidentally adds conversational text
     return JSON.parse(cleanJson);
   } catch (e) {
     console.error("Gemini Agent Error:", e);
-    return { type: "chat", reply: "Terjadi kesalahan internal saat AI membaca datamu." };
+    return { type: "chat", reply: "Oops, ada error internal pas baca datamu bos. Coba lagi bentar ya." };
   }
 }
