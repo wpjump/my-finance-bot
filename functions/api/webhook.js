@@ -5,6 +5,8 @@ export async function onRequestPost({ request, env }) {
     const update = await request.json();
     const token = env.TELEGRAM_TOKEN;
     const ownerId = env.OWNER_CHAT_ID ? String(env.OWNER_CHAT_ID) : null; 
+    // Ambil nama bos dari variabel, kalau kosong panggil "Bos"
+    const ownerName = env.OWNER_NAME ? env.OWNER_NAME : "Bos"; 
 
     // --- SECURITY CHECK: GET CURRENT CHAT ID ---
     let currentChatId = null;
@@ -17,7 +19,7 @@ export async function onRequestPost({ request, env }) {
     // --- SETUP & AUTHORIZATION GATE ---
     // 1. Jika OWNER_CHAT_ID belum disetting di Cloudflare
     if (!ownerId || ownerId === 'xxx') {
-      const setupMsg = `Halo! 👋 Aku belum punya 'majikan' nih.\n\nBiar aman dan data keuanganmu nggak bisa diintip orang lain, kamu harus ngunci bot ini khusus buat kamu doang.\n\n🔑 **Chat ID kamu:** \`${currentChatId}\`\n\n**Cara setting-nya gampang:**\n1. Copy angka Chat ID di atas.\n2. Buka dashboard Cloudflare > masuk ke project kamu.\n3. Pilih menu Settings > Environment variables.\n4. Tambah variable baru dengan nama \`OWNER_CHAT_ID\` dan isinya paste angka tadi.\n5. Save & Deploy ulang (Retry deployment).\n\nKalo udah selesai, ketik /start lagi ya bos!`;
+      const setupMsg = `Halo! 👋 Aku sistem AI yang baru di-deploy.\n\nBiar aman dan nggak bisa dibajak orang lain, kamu harus nge-klaim aku sebagai milikmu.\n\n🔑 **Chat ID kamu:** \`${currentChatId}\`\n\n**Cara Klaim (Hanya 1 Menit):**\n1. Copy Chat ID kamu di atas.\n2. Buka dashboard Cloudflare > Project kamu > Settings > Environment variables.\n3. Buat/Edit variable \`OWNER_CHAT_ID\` dan paste angka tadi.\n4. (Opsional) Buat variable \`OWNER_NAME\` dan isi namamu (misal: "Mas Wid").\n5. Save, lalu tekan tombol **Retry deployment**.\n\nKalau udah, ketik /start lagi ya!`;
       
       await sendMessage(currentChatId, setupMsg, token);
       return new Response("OK", { status: 200 }); 
