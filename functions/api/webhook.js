@@ -16,7 +16,7 @@ export async function onRequestPost({ request, env }) {
 
     // --- SETUP & AUTHORIZATION GATE ---
     // 1. Jika OWNER_CHAT_ID belum disetting di Cloudflare
-    if (!ownerId) {
+    if (!ownerId || ownerId === 'xxx') {
       const setupMsg = `Halo! 👋 Aku belum punya 'majikan' nih.\n\nBiar aman dan data keuanganmu nggak bisa diintip orang lain, kamu harus ngunci bot ini khusus buat kamu doang.\n\n🔑 **Chat ID kamu:** \`${currentChatId}\`\n\n**Cara setting-nya gampang:**\n1. Copy angka Chat ID di atas.\n2. Buka dashboard Cloudflare > masuk ke project kamu.\n3. Pilih menu Settings > Environment variables.\n4. Tambah variable baru dengan nama \`OWNER_CHAT_ID\` dan isinya paste angka tadi.\n5. Save & Deploy ulang (Retry deployment).\n\nKalo udah selesai, ketik /start lagi ya bos!`;
       
       await sendMessage(currentChatId, setupMsg, token);
