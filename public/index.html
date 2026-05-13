@@ -104,6 +104,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const chatId = urlParams.get('chat_id');
         let allData = [];
+        let filteredData = []; // Menyimpan data yang sedang aktif difilter
         let chart1, chart2;
 
         async function init() {
@@ -113,14 +114,12 @@
             }
             document.getElementById('displayId').innerText = `Chat ID: ${chatId}`;
 
-            // Set Filter ke Bulan dan Tahun Saat Ini
             const now = new Date();
             const currentMonth = now.getMonth();
             const currentYear = now.getFullYear();
 
             document.getElementById('monthFilter').value = currentMonth;
 
-            // Cek apakah tahun saat ini ada di select option, kalau tidak, tambahkan otomatis
             const yearSelect = document.getElementById('yearFilter');
             let yearExists = Array.from(yearSelect.options).some(opt => parseInt(opt.value) === currentYear);
             if (!yearExists) {
@@ -130,7 +129,6 @@
             yearSelect.value = currentYear;
             
             try {
-                // Endpoint API harus sudah dibuat di functions/api/data.js
                 const res = await fetch(`/api/data?chat_id=${chatId}`);
                 allData = await res.json();
                 filterData();
@@ -143,14 +141,14 @@
             const m = document.getElementById('monthFilter').value;
             const y = document.getElementById('yearFilter').value;
 
-            const filtered = allData.filter(t => {
+            filteredData = allData.filter(t => {
                 const d = new Date(t.created_at);
                 const matchMonth = m === 'all' || d.getMonth() == m;
                 const matchYear = d.getFullYear() == y;
                 return matchMonth && matchYear;
             });
 
-            updateUI(filtered);
+            updateUI(filteredData);
         }
 
         function updateUI(data) {
@@ -212,11 +210,42 @@
             });
         }
 
+        function printPage() {
+            try {
+                window.print();
+            } catch (e) {
+                alert("Gagal mencetak. Jika Anda membuka ini dari dalam Telegram, silakan buka link ini di browser eksternal (Chrome/Safari/Edge) dengan mengklik tombol titik tiga di pojok kanan atas.");
+            }
+        }
+
         function exportToExcel() {
-            const ws = XLSX.utils.json_to_sheet(allData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Transaksi");
-            XLSX.writeFile(wb, `Laporan_${chatId}.xlsx`);
+            if (filteredData.length === 0) {
+                alert("Tidak ada data transaksi pada bulan dan tahun ini untuk diexport.");
+                return;
+            }
+
+            try {
+                // Rapikan format data khusus untuk excel
+                const exportData = filteredData.map(t => ({
+                    "Tanggal": new Date(t.created_at).toLocaleString('id-ID'),
+                    "Kategori": t.category,
+                    "Tipe": t.transaction_type === 'income' ? 'Pemasukan' : 'Pengeluaran',
+                    "Nominal": t.amount,
+                    "Keterangan": t.description || '-'
+                }));
+
+                const ws = XLSX.utils.json_to_sheet(exportData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Transaksi");
+                
+                // Beri nama file sesuai filter aktif
+                const m = document.getElementById('monthFilter').options[document.getElementById('monthFilter').selectedIndex].text;
+                const y = document.getElementById('yearFilter').value;
+                XLSX.writeFile(wb, `Laporan_Keuangan_${m}_${y}.xlsx`);
+
+            } catch (e) {
+                alert("Gagal mengunduh file Excel. Browser bawaan Telegram sering memblokir unduhan. Silakan buka link ini di browser eksternal (Chrome/Safari) melalui menu titik tiga di pojok kanan atas layar Anda.");
+            }
         }
 
         init();
