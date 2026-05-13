@@ -114,7 +114,7 @@ export async function onRequestPost({ request, env }) {
                  ).bind(chatId, aiResult.amount, aiResult.transaction_type, aiResult.category, aiResult.description, dateToInsert).run();
 
                  const typeLabel = aiResult.transaction_type === 'income' ? 'Uang Masuk 📈' : 'Pengeluaran 📉';
-                 await sendMessage(chatId, `✅ Beres bos! Otomatis dicatet sebagai ${typeLabel}:\nRp ${aiResult.amount.toLocaleString('id-ID')} (${aiResult.category})\nKet: ${aiResult.description}\n📅 ${dateToInsert}`, token);
+                 await sendMessage(chatId, `✅ Beres ${ownerName}! Otomatis dicatet sebagai ${typeLabel}:\nRp ${aiResult.amount.toLocaleString('id-ID')} (${aiResult.category})\nKet: ${aiResult.description}\n📅 ${dateToInsert}`, token);
              } 
              else {
                  // Gambar struk tanpa caption yang jelas, tanyakan ke user
