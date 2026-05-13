@@ -1,3 +1,5 @@
+// functions/api/webhook.js
+
 export async function onRequestPost({ request, env }) {
   try {
     const update = await request.json();
@@ -5,6 +7,8 @@ export async function onRequestPost({ request, env }) {
     const ownerId = env.OWNER_CHAT_ID ? String(env.OWNER_CHAT_ID) : null; 
     // Ambil nama bos dari variabel, kalau kosong panggil "Bos"
     const ownerName = env.OWNER_NAME ? env.OWNER_NAME : "Bos"; 
+    // Ambil model Gemini dari variabel, fallback ke 2.5-flash jika kosong
+    const geminiModel = env.GEMINI_MODEL ? env.GEMINI_MODEL : "gemini-2.5-flash";
 
     // --- SECURITY CHECK: GET CURRENT CHAT ID ---
     let currentChatId = null;
@@ -94,7 +98,8 @@ export async function onRequestPost({ request, env }) {
              base64Image = arrayBufferToBase64(imgBuffer);
          }
 
-         const aiResult = await askGeminiAgent(text, base64Image, env.GEMINI_API_KEY, ownerName);
+         // Pass the model variable to Gemini Agent
+         const aiResult = await askGeminiAgent(text, base64Image, env.GEMINI_API_KEY, ownerName, geminiModel);
 
          if (aiResult.type === "chat") {
              await sendMessage(chatId, aiResult.reply, token);
@@ -103,7 +108,7 @@ export async function onRequestPost({ request, env }) {
              const dateToInsert = aiResult.date || getFallbackDate();
 
              if (aiResult.transaction_type === "expense" || aiResult.transaction_type === "income") {
-                 // Gemini 100% yakin ini pengeluaran/pemasukan (biasanya karena ada caption/teks)
+                 // Gemini 100% yakin ini pengeluaran/pemasukan
                  await env.DB.prepare(
                     "INSERT INTO transactions (chat_id, amount, transaction_type, category, description, created_at) VALUES (?, ?, ?, ?, ?, ?)"
                  ).bind(chatId, aiResult.amount, aiResult.transaction_type, aiResult.category, aiResult.description, dateToInsert).run();
@@ -139,7 +144,6 @@ export async function onRequestPost({ request, env }) {
 // ==========================================
 
 function getFallbackDate() {
-  // Menghasilkan tanggal default dengan format YYYY-MM-DD HH:MM:SS (UTC, nanti disesuaikan via JS di frontend jika perlu)
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
@@ -179,11 +183,11 @@ async function sendInlineKeyboard(chatId, text, token) {
 }
 
 // Gemini Agent Logic
-async function askGeminiAgent(textInput, imageBase64, apiKey, ownerName) {
+async function askGeminiAgent(textInput, imageBase64, apiKey, ownerName, modelName) {
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    // Inject the dynamic model name from environment variables
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
     
-    // Inject waktu saat ini agar Gemini tahu konteks "Kemarin" atau "Hari ini"
     const currentDate = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' });
 
     const prompt = `Kamu adalah asisten keuangan pribadi yang santai, asik, friendly, dan pinter bernama "MyFinance AI". Kamu harus memanggil saya sebagai "${ownerName}".
@@ -208,8 +212,9 @@ async function askGeminiAgent(textInput, imageBase64, apiKey, ownerName) {
     const parts = [{ text: prompt }];
 
     if (imageBase64) {
+      // [FIXED]: Use camelCase for inlineData and mimeType as required by Gemini REST API
       parts.push({
-        inline_data: { mime_type: "image/jpeg", data: imageBase64 }
+        inlineData: { mimeType: "image/jpeg", data: imageBase64 }
       });
     }
 
@@ -222,6 +227,7 @@ async function askGeminiAgent(textInput, imageBase64, apiKey, ownerName) {
     const data = await response.json();
     
     if (!data.candidates || data.candidates.length === 0) {
+       console.error("Gemini rejected the payload:", data);
        return { type: "chat", reply: `Waduh, AI-nya lagi pusing nih ${ownerName}. Coba kirim gambarnya yang lebih jelas atau ketik manual aja ya.` };
     }
 
