@@ -6,7 +6,7 @@
     <title>Dashboard Keuangan - MyFinance AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans antialiased flex flex-col min-h-screen">
     
@@ -18,9 +18,9 @@
             </div>
             <div class="flex items-center gap-2">
                 <button onclick="exportToExcel()" class="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-5 rounded-xl transition shadow-sm active:scale-95">
-                    Excel
+                    Excel Pro
                 </button>
-                <button onclick="window.print()" class="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-5 rounded-xl transition shadow-sm active:scale-95">
+                <button onclick="printPage()" class="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-5 rounded-xl transition shadow-sm active:scale-95">
                     Cetak PDF
                 </button>
             </div>
@@ -41,9 +41,6 @@
                 <div class="flex-1 min-w-[140px]">
                     <label class="block text-xs font-bold uppercase text-slate-400 mb-2">Pilih Tahun</label>
                     <select id="yearFilter" onchange="filterData()" class="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <option value="2024">2024</option>
-                        <option value="2025">2025</option>
-                        <option value="2026">2026</option>
                         </select>
                 </div>
             </div>
@@ -89,8 +86,7 @@
                             <th class="px-6 py-4 text-xs font-bold text-slate-400 uppercase text-right">Nominal</th>
                         </tr>
                     </thead>
-                    <tbody id="tableBody" class="divide-y divide-slate-50">
-                        </tbody>
+                    <tbody id="tableBody" class="divide-y divide-slate-50"></tbody>
                 </table>
             </div>
         </div>
@@ -104,7 +100,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const chatId = urlParams.get('chat_id');
         let allData = [];
-        let filteredData = []; // Menyimpan data yang sedang aktif difilter
+        let filteredData = [];
         let chart1, chart2;
 
         async function init() {
@@ -118,14 +114,22 @@
             const currentMonth = now.getMonth();
             const currentYear = now.getFullYear();
 
+            // 1. Set default bulan
             document.getElementById('monthFilter').value = currentMonth;
 
+            // 2. Generasi Tahun Secara Dinamis
             const yearSelect = document.getElementById('yearFilter');
-            let yearExists = Array.from(yearSelect.options).some(opt => parseInt(opt.value) === currentYear);
-            if (!yearExists) {
-                const newOption = new Option(currentYear, currentYear);
-                yearSelect.add(newOption);
+            yearSelect.innerHTML = ''; // Pastikan kosong sebelum diisi
+            
+            const startYear = 2024; // Tahun awal project/script dirilis
+            const endYear = currentYear + 1; // Berikan opsi hingga 1 tahun ke depan
+
+            for (let y = startYear; y <= endYear; y++) {
+                const opt = new Option(y, y);
+                yearSelect.add(opt);
             }
+            
+            // Pilih tahun saat ini sebagai default
             yearSelect.value = currentYear;
             
             try {
@@ -154,7 +158,6 @@
         function updateUI(data) {
             let inc = 0, exp = 0;
             const cats = {};
-            
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = '';
 
@@ -214,38 +217,90 @@
             try {
                 window.print();
             } catch (e) {
-                alert("Gagal mencetak. Jika Anda membuka ini dari dalam Telegram, silakan buka link ini di browser eksternal (Chrome/Safari/Edge) dengan mengklik tombol titik tiga di pojok kanan atas.");
+                alert("Gagal mencetak. Silakan buka di browser eksternal (Chrome/Safari).");
             }
         }
 
-        function exportToExcel() {
-            if (filteredData.length === 0) {
-                alert("Tidak ada data transaksi pada bulan dan tahun ini untuk diexport.");
-                return;
-            }
+        // ==========================================
+        // FUNGSI EXCEL PRO (DENGAN STYLING & WIDTH)
+        // ==========================================
+        async function exportToExcel() {
+            if (filteredData.length === 0) return alert("Nggak ada data buat diexport bos!");
 
-            try {
-                // Rapikan format data khusus untuk excel
-                const exportData = filteredData.map(t => ({
-                    "Tanggal": new Date(t.created_at).toLocaleString('id-ID'),
-                    "Kategori": t.category,
-                    "Tipe": t.transaction_type === 'income' ? 'Pemasukan' : 'Pengeluaran',
-                    "Nominal": t.amount,
-                    "Keterangan": t.description || '-'
-                }));
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Laporan Keuangan');
 
-                const ws = XLSX.utils.json_to_sheet(exportData);
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Transaksi");
-                
-                // Beri nama file sesuai filter aktif
-                const m = document.getElementById('monthFilter').options[document.getElementById('monthFilter').selectedIndex].text;
-                const y = document.getElementById('yearFilter').value;
-                XLSX.writeFile(wb, `Laporan_Keuangan_${m}_${y}.xlsx`);
+            // 1. Definisikan Kolom & Lebar Dasar
+            worksheet.columns = [
+                { header: 'Tanggal', key: 'date', width: 20 },
+                { header: 'Kategori', key: 'category', width: 15 },
+                { header: 'Tipe', key: 'type', width: 15 },
+                { header: 'Nominal (Rp)', key: 'amount', width: 15 },
+                { header: 'Keterangan', key: 'desc', width: 35 }
+            ];
 
-            } catch (e) {
-                alert("Gagal mengunduh file Excel. Browser bawaan Telegram sering memblokir unduhan. Silakan buka link ini di browser eksternal (Chrome/Safari) melalui menu titik tiga di pojok kanan atas layar Anda.");
-            }
+            // 2. Styling Header
+            const headerRow = worksheet.getRow(1);
+            headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4F46E5' } }; // Indigo 600
+            headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+            // 3. Masukkan Data
+            filteredData.forEach(t => {
+                const row = worksheet.addRow({
+                    date: new Date(t.created_at).toLocaleString('id-ID'),
+                    category: t.category,
+                    type: t.transaction_type === 'income' ? 'Pemasukan' : 'Pengeluaran',
+                    amount: t.amount,
+                    desc: t.description || '-'
+                });
+
+                // Format angka nominal
+                row.getCell(4).numFmt = '#,##0';
+                // Warna teks nominal berdasarkan tipe
+                if (t.transaction_type === 'income') {
+                    row.getCell(4).font = { color: { argb: '10B981' }, bold: true };
+                } else {
+                    row.getCell(4).font = { color: { argb: 'F43F5E' }, bold: true };
+                }
+            });
+
+            // 4. Border Otomatis & Auto-Column Width
+            worksheet.eachRow((row, rowNumber) => {
+                row.eachCell((cell) => {
+                    cell.border = {
+                        top: { style: 'thin' },
+                        left: { style: 'thin' },
+                        bottom: { style: 'thin' },
+                        right: { style: 'thin' }
+                    };
+                });
+            });
+
+            // Logika Auto Width berdasarkan konten
+            worksheet.columns.forEach(column => {
+                let maxColumnLength = 0;
+                column.eachCell({ includeEmpty: true }, (cell) => {
+                    const columnLength = cell.value ? cell.value.toString().length : 10;
+                    if (columnLength > maxColumnLength) {
+                        maxColumnLength = columnLength;
+                    }
+                });
+                column.width = maxColumnLength < 10 ? 10 : maxColumnLength + 2;
+            });
+
+            // 5. Download File
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            const m = document.getElementById('monthFilter').options[document.getElementById('monthFilter').selectedIndex].text;
+            const y = document.getElementById('yearFilter').value;
+
+            anchor.href = url;
+            anchor.download = `Laporan_Keuangan_${m}_${y}.xlsx`;
+            anchor.click();
+            window.URL.revokeObjectURL(url);
         }
 
         init();
